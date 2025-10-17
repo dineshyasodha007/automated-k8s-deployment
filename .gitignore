@@ -1,0 +1,20 @@
+# Python
+__pycache__/
+*.pyc
+
+# Docker
+*.log
+*.tmp
+
+# Terraform
+.terraform/
+*.tfstate
+*.tfstate.backup
+
+# IntelliJ / IDE
+.idea/
+*.iml
+
+# OS Files
+.DS_Store
+Thumbs.db

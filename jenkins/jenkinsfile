@@ -1,0 +1,92 @@
+pipeline {
+    agent any
+
+    environment {
+        DOCKERHUB_CREDENTIALS = credentials('dockerhub-credentials')   // Jenkins credential ID
+        DOCKER_IMAGE = "your-dockerhub-username/simple-web-app"
+        K8S_DEPLOYMENT = "k8s/deployment.yaml"
+        K8S_SERVICE = "k8s/service.yaml"
+        AWS_REGION = "us-east-1"
+        CLUSTER_NAME = "demo-eks-cluster"
+    }
+
+    stages {
+        stage('Checkout Code') {
+            steps {
+                echo "Fetching latest code from Git..."
+                checkout scm
+            }
+        }
+
+        stage('Build Docker Image') {
+            steps {
+                script {
+                    echo "Building Docker image..."
+                    sh """
+                    cd app
+                    docker build -t ${DOCKER_IMAGE}:${BUILD_NUMBER} .
+                    """
+                }
+            }
+        }
+
+        stage('Push Image to Docker Hub') {
+            steps {
+                script {
+                    echo "Pushing Docker image to Docker Hub..."
+                    sh """
+                    echo ${DOCKERHUB_CREDENTIALS_PSW} | docker login -u ${DOCKERHUB_CREDENTIALS_USR} --password-stdin
+                    docker push ${DOCKER_IMAGE}:${BUILD_NUMBER}
+                    """
+                }
+            }
+        }
+
+        stage('Update K8s Deployment') {
+            steps {
+                script {
+                    echo "Updating Kubernetes deployment YAML with new image tag..."
+                    sh """
+                    sed -i 's|image: .*|image: ${DOCKER_IMAGE}:${BUILD_NUMBER}|' ${K8S_DEPLOYMENT}
+                    cat ${K8S_DEPLOYMENT}
+                    """
+                }
+            }
+        }
+
+        stage('Configure kubeconfig for EKS') {
+            steps {
+                script {
+                    echo "Setting up kubeconfig for EKS..."
+                    sh """
+                    aws eks update-kubeconfig --name ${CLUSTER_NAME} --region ${AWS_REGION}
+                    kubectl get nodes
+                    """
+                }
+            }
+        }
+
+        stage('Deploy to Kubernetes') {
+            steps {
+                script {
+                    echo "Deploying app to Kubernetes..."
+                    sh """
+                    kubectl apply -f ${K8S_DEPLOYMENT}
+                    kubectl apply -f ${K8S_SERVICE}
+                    kubectl rollout status deployment nginx-deployment
+                    kubectl get svc
+                    """
+                }
+            }
+        }
+    }
+
+    post {
+        success {
+            echo "✅ Deployment successful! Application is live."
+        }
+        failure {
+            echo "❌ Deployment failed. Please check logs."
+        }
+    }
+}
